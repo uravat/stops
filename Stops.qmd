@@ -1,0 +1,140 @@
+---
+title: "Stops"
+format: html
+execute: 
+  echo: false
+---
+
+```{r}
+#| message: false
+library(tidymodels)
+#library(MASS) #We load MASS before tidyverse so that tidyverse’s version of select() takes priority. In R, the most recently loaded package overrides functions with the same name.
+library(tidyverse)
+library(primer.data)
+library(broom)
+#install.packages("MASS")
+library(easystats) #We don’t add easystats to the QMD because we are only using it for an interactive check of our fitted model.
+library(marginaleffects) 
+```
+
+```{r}
+x <- stops |>
+  filter(race %in% c("black", "white")) |>
+  mutate(race = str_to_title(race), 
+         sex = str_to_title(sex))
+```
+
+```{r}
+#| eval: false
+linear_reg(engine = "lm") |> fit(arrested ~ sex, data = x)|>tidy(conf.int = TRUE)
+linear_reg(engine = "lm") |> fit(arrested ~ race, data = x)|>tidy(conf.int = TRUE)
+linear_reg(engine = "lm") |> fit(arrested ~ sex + race, data = x)|>tidy(conf.int = TRUE)
+linear_reg(engine = "lm") |> fit(arrested ~ sex + race*zone, data = x)|>tidy(conf.int = TRUE)
+
+```
+```{r}
+#| eval: true
+fit_stops <- linear_reg() |>
+    set_engine("lm") |>
+    fit(arrested ~ sex + race*zone, data = x)
+```
+
+```{r}
+#| eval: false
+check_predictions(extract_fit_engine(fit_stops)) # may be plot_predictions since there is no plot here 
+tidy(fit_stops, conf.int = TRUE)
+```
+
+```{r}
+#| eval: false
+fit_stops_logistic <- logistic_reg() |>
+  set_engine("glm") |>
+  fit(as.factor(arrested) ~ sex + race, data = x)
+```
+```{r}
+#| eval: false
+tidy(fit_stops_logistic, conf.int = TRUE)
+```
+
+```{r}
+#| eval: false
+predictions(fit_stops)
+```
+
+<!-- 
+Using plot_predictions(fit_stops, by = “sex”), this plot shows the average predicted arrest rate for each sex group based on their actual data. It reflects real-world differences, since other variables like race and zone are not balanced. This helps us see how outcomes differ across sex in practice.
+-->
+```{r}
+plot_predictions(fit_stops, by = "sex")
+```
+
+<!--
+Using plot_predictions(fit_stops, condition = “sex”), this plot predicts arrest rates for males and females while holding other variables constant or balanced. It isolates the effect of sex by ensuring all else is equal. This shows what the model predicts if everyone had the same background variables.
+-->
+```{r}
+plot_predictions(fit_stops, condition = "sex")
+```
+
+<!--
+When you use by = "sex", the graph shows the real arrest rates for men and women as they actually are in the data, including all other differences like age or location. Using condition = "sex" shows what arrest rates would look like if men and women were the same in every other way except sex, isolating the effect of sex alone. The graphs look almost the same because sex is the main factor affecting arrest rates, and other variables don’t change the results much.
+
+-->
+
+<!--
+This plot shows predicted probabilities of being arrested by sex and race, with vertical lines representing uncertainty (95% confidence intervals). Black males have the highest predicted probability (around 0.32), and White females the lowest (around 0.24). While the estimates are fairly precise—indicated by the short confidence intervals—there is still some overlap, especially between Black and White males, suggesting some uncertainty in how distinct those groups are.
+
+-->
+```{r}
+plot_predictions(fit_stops, condition = c("sex", "race"))
+```
+
+```{r}
+library(tidytext)
+plot_predictions(fit_stops$fit,
+                 newdata = "balanced",
+                 condition = c("zone", "race", "sex"),
+                 draw = FALSE) |> as_tibble() |> 
+  group_by(zone, sex) |>
+  mutate(sort_order = estimate[race == "Black"]) |>
+  ungroup() |>
+  mutate(zone = reorder_within(zone, sort_order, sex)) |>
+  ggplot(aes(x = zone, 
+             color = race)) +
+  geom_errorbar(aes(ymin = conf.low, 
+                    ymax = conf.high), 
+                width = 0.2,
+                position = position_dodge(width = 0.5)) +
+  geom_point(aes(y = estimate), 
+             size = 1, 
+             position = position_dodge(width = 0.5)) +
+  facet_wrap(~ sex, scales = "free_x") +
+  scale_x_reordered() +
+  theme(axis.text.x = element_text(size = 8)) +
+  scale_y_continuous(labels = percent_format())
+```
+<!--
+
+Racial disparities in policing outcomes remain a pressing concern, particularly when examining how factors like race and location influence the likelihood of arrest during traffic stops. Using data from a study of New Orleans drivers, we seek to understand the relationship between driver race and the probability of getting arrested during a traffic stop.
+
+-->
+
+Traffic stops often reveal important patterns about interactions between law enforcement and the public, especially regarding characteristics like race and arrest outcomes.
+
+This analysis uses a dataset of nearly 400,000 traffic stops, which includes detailed information on age, race, sex, and arrest status, to explore potential disparities in arrest rates across different groups.
+
+<!--
+However, our data from both our Preceptor Table and our dataset may not fully represent the population as both may not be from the same time frame and some of our data may come from biased officers, who may target certain groups of individuals.
+-->
+A potential weakness of this model is that it assumes the data columns are fully representative and stable over time, which may not hold due to changes in policing practices or incomplete recording of certain groups.
+
+<!--
+ However, these concerns don’t appear to be valid in a substantial manner in either dataset, allowing us to continue in our process. We modeled arrested as a linear function of both sex and the product of race and zone. From this, we examined that Males are less likely of getting arrested than Females.
+-->
+However, these concerns don’t appear to be valid in a substantial manner in either dataset, allowing us to continue in our process. We modeled arrested as a linear function of both sex and the product of race and zone. From this, we observed that Males are less likely of getting arrested than Females.
+
+We modeled arrested as a linear function of both sex and the product of race and zone. From this, we examined that Males are less likely of getting arrested than Females. Focusing on our question, there is no uncertainty associated with our estimate because it, itself, is an expression of uncertainty. We estimate that the probaibility of a Black driver in New Orleans getting arrested during a traffic stop is roughly 25%, compared to roughly 20% for White drivers.
+
+<!--
+Write a few sentences which explain why the estimates for the quantities of interest, and the uncertainty thereof, might be wrong. Suggest an alternative estimate and confidence interval, if you think either might be warranted.
+-->
+Based on all of the errors in our data that we collected during Justice, our original data source to base our model on was already flawed. Additionally, our model can only predict estimates on paper, based on an ideal world. It doesn’t account for many factors of the real world that we, ourselves, can’t even describe. However, our estimate was formed to the best of our abilities given the data on hand, and all I would do to modify it would be to modify the confidence intervals: I would keep the upper confidence interval the same, but would singifcantly decrease the lower confidence interval to roughly 15%-17% to account for the future, where the values would most likely decrease based on the pattern of racism in the US decreasing over time.
